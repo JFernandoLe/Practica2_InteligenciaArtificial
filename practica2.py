@@ -2,6 +2,134 @@ import pandas as pd
 import numpy as np
 
 
+def bfs(maze, inicio, fin):
+    print("Algoritmo BFS (Búsqueda por Amplitud)")
+    cola = deque()
+    visitados = []
+    ruta = {}
+    
+    # Agregamos el nodo inicial a la cola
+    cola.append(inicio)
+    visitados.append(inicio)
+    
+    print(f"Cola: {list(cola)}")
+    print(f"Visitados: {visitados}")
+    
+    while cola:
+        nodo_actual = cola.popleft()
+        print(f"Nodo actual: {nodo_actual}")
+        
+        # Si llegamos al destino
+        if nodo_actual == fin:
+            print("Solución encontrada!")
+            camino = formarCamino(ruta, fin)
+            print(f"Camino: {camino}")
+            imprimirSolucion(camino, maze)
+            return
+        
+        # Expandir vecinos (arriba, derecha, abajo, izquierda)
+        vecinos = [
+            [nodo_actual[0] - 1, nodo_actual[1]],  # arriba
+            [nodo_actual[0], nodo_actual[1] + 1],  # derecha
+            [nodo_actual[0] + 1, nodo_actual[1]],  # abajo
+            [nodo_actual[0], nodo_actual[1] - 1]   # izquierda
+        ]
+        
+        for vecino in vecinos:
+            print(f"Evaluando vecino: {vecino}")
+            
+            # Verificar límites del laberinto
+            if not (0 <= vecino[0] < maze.shape[0] and 0 <= vecino[1] < maze.shape[1]):
+                print("Fuera de rango")
+                continue
+            
+            # Verificar si es pared
+            if str(maze.iloc[vecino[0], vecino[1]]) == '1':
+                print("Es pared")
+                continue
+            
+            # Verificar si ya fue visitado
+            if vecino in visitados:
+                print("Ya visitado")
+                continue
+            
+            # Agregar a la cola y marcar como visitado
+            cola.append(vecino)
+            visitados.append(vecino)
+            ruta[tuple(vecino)] = tuple(nodo_actual)
+            print(f"Vecino agregado a la cola: {vecino}")
+        
+        print(f"Cola: {list(cola)}")
+        print(f"Visitados: {visitados}")
+        print("---")
+    
+    print("No hay ruta")
+
+
+def dfs(maze, inicio, fin):
+    print("Algoritmo DFS (Búsqueda por Profundidad)")
+    pila = []
+    visitados = []
+    ruta = {}
+    
+    # Agregamos el nodo inicial a la pila
+    pila.append(inicio)
+    visitados.append(inicio)
+    
+    print(f"Pila: {pila}")
+    print(f"Visitados: {visitados}")
+    
+    while pila:
+        nodo_actual = pila.pop()  # Sacamos el último elemento (LIFO)
+        print(f"Nodo actual: {nodo_actual}")
+        
+        # Si llegamos al destino
+        if nodo_actual == fin:
+            print("Solución encontrada!")
+            camino = formarCamino(ruta, fin)
+            print(f"Camino: {camino}")
+            imprimirSolucion(camino, maze)
+            return
+        
+        # Expandir vecinos (arriba, derecha, abajo, izquierda)
+        # Los agregamos en orden inverso para que se procesen en el orden correcto
+        vecinos = [
+            [nodo_actual[0], nodo_actual[1] - 1],  # izquierda
+            [nodo_actual[0] + 1, nodo_actual[1]],  # abajo
+            [nodo_actual[0], nodo_actual[1] + 1],  # derecha
+            [nodo_actual[0] - 1, nodo_actual[1]]   # arriba
+        ]
+        
+        for vecino in vecinos:
+            print(f"Evaluando vecino: {vecino}")
+            
+            # Verificar límites del laberinto
+            if not (0 <= vecino[0] < maze.shape[0] and 0 <= vecino[1] < maze.shape[1]):
+                print("Fuera de rango")
+                continue
+            
+            # Verificar si es pared
+            if str(maze.iloc[vecino[0], vecino[1]]) == '1':
+                print("Es pared")
+                continue
+            
+            # Verificar si ya fue visitado
+            if vecino in visitados:
+                print("Ya visitado")
+                continue
+            
+            # Agregar a la pila y marcar como visitado
+            pila.append(vecino)
+            visitados.append(vecino)
+            ruta[tuple(vecino)] = tuple(nodo_actual)
+            print(f"Vecino agregado a la pila: {vecino}")
+        
+        print(f"Pila: {pila}")
+        print(f"Visitados: {visitados}")
+        print("---")
+    
+    print("No hay ruta")
+
 def estrella(maze, inicio, fin):
     print("Algoritmo A*")
     abiertos=[]
@@ -137,8 +265,10 @@ opcion = input()
 opcion=(int(opcion))
 if opcion == 1:
     print("Ha seleccionado BFS")
+    bfs(maze, inicio, fin)
 elif opcion == 2:
     print("Ha seleccionado DFS")
+    dfs(maze, inicio, fin)
 elif opcion == 3:
     print("Ha seleccionado A*")
     estrella(maze, inicio, fin)
