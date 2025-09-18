@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-
+from collections import deque
 
 def bfs(maze, inicio, fin):
     print("Algoritmo BFS (Búsqueda por Amplitud)")
