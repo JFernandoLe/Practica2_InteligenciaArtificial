@@ -1,0 +1,191 @@
+#include <bits/stdc++.h>
+using namespace std;
+
+/* ========== Estado empaquetado en 64 bits (16 casillas x 4 bits) ========== */
+static inline uint64_t pack16(const array<int,16>& a){
+    uint64_t x = 0;
+    for(int i=0;i<16;i++) x = (x<<4) | (uint64_t)(a[i] & 0xF);
+    return x;
+}
+static inline int get_tile(uint64_t s, int idx){ // 0..15
+    int shift = 4*(15-idx);
+    return (int)((s >> shift) & 0xFULL);
+}
+static inline uint64_t set_tile(uint64_t s, int idx, int val){
+    int shift = 4*(15-idx);
+    uint64_t mask = (uint64_t)0xFULL << shift;
+    return (s & ~mask) | ((uint64_t)(val & 0xF) << shift);
+}
+static inline uint64_t swap_tiles(uint64_t s, int i, int j){
+    int a = get_tile(s,i), b = get_tile(s,j);
+    s = set_tile(s,i,b);
+    s = set_tile(s,j,a);
+    return s;
+}
+static inline int find_zero(uint64_t s){
+    for(int i=0;i<16;i++) if(get_tile(s,i)==0) return i;
+    return -1;
+}
+
+/* ========== Verificador de resolubilidad (tu regla 4x4) ========== */
+bool is_solvable_4x4(const array<int,16>& grid){
+    int inv = 0;
+    for(int i=0;i<16;i++){
+        if(grid[i]==0) continue;
+        for(int j=i+1;j<16;j++){
+            if(grid[j]==0) continue;
+            if(grid[i] > grid[j]) inv++;
+        }
+    }
+    int zpos = 0;
+    for(int i=0;i<16;i++) if(grid[i]==0){ zpos=i; break; }
+    int row_from_bottom = 4 - (zpos/4);
+    return ( (row_from_bottom%2==0 && inv%2==1) || (row_from_bottom%2==1 && inv%2==0) );
+}
+
+/* ========== Reconstrucción del camino U/D/L/R ========== */
+string reconstruct(uint64_t goal,
+                   const unordered_map<uint64_t,uint64_t>& parent,
+                   const unordered_map<uint64_t,char>& move_to){
+    string path;
+    uint64_t cur = goal;
+    auto it = parent.find(cur);
+    while(it != parent.end()){
+        path.push_back(move_to.at(cur));
+        cur = it->second;
+        it = parent.find(cur);
+    }
+    reverse(path.begin(), path.end());
+    return path;
+}
+
+/* ========== BFS ========== */
+struct QItem { uint64_t s; int z; }; // estado + idx del 0
+
+int main(){
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    array<int,16> grid{};
+    for(int i=0;i<16;i++){
+        if(!(cin>>grid[i])) return 0;
+    }
+
+    cout << "El tablero ingresado es:\n";
+    int row_from_bottom_print = 0;
+    for(int i=0;i<16;i++){
+        cout << grid[i] << ( (i%4==3) ? '\n' : ' ' );
+        if(grid[i]==0) row_from_bottom_print = 4 - (i/4);
+    }
+    // inversiones
+    int inv = 0;
+    for(int i=0;i<16;i++){
+        if(grid[i]==0) continue;
+        for(int j=i+1;j<16;j++){
+            if(grid[j]==0) continue;
+            if(grid[i] > grid[j]) inv++;
+        }
+    }
+    cout << "El numero de inversiones es: " << inv << "\n";
+    cout << "El hueco se encuentra en la posicion: " << row_from_bottom_print << " (de abajo hacia arriba)\n";
+
+    if(!is_solvable_4x4(grid)){
+        cout << "El tablero NO es resoluble.\n";
+        return 0;
+    }
+    cout << "El tablero es resoluble. Ejecutando BFS (coste uniforme)...\n";
+
+    array<int,16> goal_arr{};
+    for(int i=0;i<15;i++) goal_arr[i]=i+1; goal_arr[15]=0;
+    uint64_t GOAL = pack16(goal_arr);
+
+    uint64_t start = pack16(grid);
+    if(start == GOAL){
+        cout << "Ya esta en el estado meta. Camino: (vacio)\n";
+        cout << "Longitud: 0\nNodos expandidos: 0\n";
+        return 0;
+    }
+
+    queue<QItem> q;
+    unordered_set<uint64_t> visited;
+    unordered_map<uint64_t,uint64_t> parent;
+    unordered_map<uint64_t,char> move_to;
+
+    visited.reserve(1<<20);
+    parent.reserve(1<<20);
+    move_to.reserve(1<<20);
+
+    int z0 = find_zero(start);
+    q.push({start, z0});
+    visited.insert(start);
+
+    size_t expanded = 0;
+    const size_t MAX_EXPANDED = 3000000; 
+
+    // Expansión BFS
+    while(!q.empty()){
+        QItem cur = q.front(); q.pop();
+        expanded++;
+
+        if(cur.s == GOAL){
+            string path = reconstruct(cur.s, parent, move_to);
+            cout << "Solucion encontrada.\n";
+            cout << "Longitud (movimientos): " << (int)path.size() << "\n";
+            cout << "Camino (U/D/L/R): " << path << "\n";
+            cout << "Nodos expandidos: " << (expanded-1) << "\n";
+            return 0;
+        }
+
+        if(expanded > MAX_EXPANDED){
+            cout << "Se alcanzo el limite de expansion ("<<MAX_EXPANDED<<").\n";
+            cout << "BFS puede consumir mucha memoria/tiempo en instancias profundas.\n";
+            return 0;
+        }
+
+        int r = cur.z/4, c = cur.z%4;
+
+        // U
+        if(r>0){
+            uint64_t ns = swap_tiles(cur.s, cur.z, cur.z-4);
+            if(!visited.count(ns)){
+                visited.insert(ns);
+                parent[ns] = cur.s;
+                move_to[ns] = 'U';
+                q.push({ns, cur.z-4});
+            }
+        }
+        // D
+        if(r<3){
+            uint64_t ns = swap_tiles(cur.s, cur.z, cur.z+4);
+            if(!visited.count(ns)){
+                visited.insert(ns);
+                parent[ns] = cur.s;
+                move_to[ns] = 'D';
+                q.push({ns, cur.z+4});
+            }
+        }
+        // L
+        if(c>0){
+            uint64_t ns = swap_tiles(cur.s, cur.z, cur.z-1);
+            if(!visited.count(ns)){
+                visited.insert(ns);
+                parent[ns] = cur.s;
+                move_to[ns] = 'L';
+                q.push({ns, cur.z-1});
+            }
+        }
+        // R
+        if(c<3){
+            uint64_t ns = swap_tiles(cur.s, cur.z, cur.z+1);
+            if(!visited.count(ns)){
+                visited.insert(ns);
+                parent[ns] = cur.s;
+                move_to[ns] = 'R';
+                q.push({ns, cur.z+1});
+            }
+        }
+    }
+
+    cout << "No se encontro solucion (improbable si era resoluble; revisa limites).\n";
+    return 0;
+}

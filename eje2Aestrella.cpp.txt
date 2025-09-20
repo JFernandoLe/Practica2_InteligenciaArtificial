@@ -1,0 +1,210 @@
+#include <bits/stdc++.h>
+using namespace std;
+
+static inline uint64_t pack16(const array<int,16>& a){
+    uint64_t x = 0;
+    for(int i=0;i<16;i++){ x = (x<<4) | (uint64_t)(a[i] & 0xF); }
+    return x;
+}
+static inline int get_tile(uint64_t s, int idx){ 
+    int shift = 4*(15-idx);
+    return (int)((s >> shift) & 0xFULL);
+}
+static inline uint64_t set_tile(uint64_t s, int idx, int val){
+    int shift = 4*(15-idx);
+    uint64_t mask = (uint64_t)0xFULL << shift;
+    s = (s & ~mask) | ((uint64_t)(val & 0xF) << shift);
+    return s;
+}
+static inline uint64_t swap_tiles(uint64_t s, int i, int j){
+    int a = get_tile(s,i), b = get_tile(s,j);
+    s = set_tile(s,i,b);
+    s = set_tile(s,j,a);
+    return s;
+}
+
+/* ======= Heurística Manhattan ======= */
+int goal_r[16], goal_c[16];
+static inline int manhattan(uint64_t s){
+    int h = 0;
+    for(int i=0;i<16;i++){
+        int t = get_tile(s,i);
+        if(t==0) continue;
+        int r = i/4, c = i%4;
+        h += abs(r - goal_r[t]) + abs(c - goal_c[t]);
+    }
+    return h;
+}
+
+/* ======= Generación de vecinos (mover el hueco U/D/L/R) ======= */
+static inline int find_zero(uint64_t s){
+    for(int i=0;i<16;i++) if(get_tile(s,i)==0) return i;
+    return -1;
+}
+static inline void neighbors(uint64_t s, int zero_idx, vector<pair<uint64_t,char>>& out){
+    out.clear();
+    int r = zero_idx/4, c = zero_idx%4;
+    if(r>0)   out.emplace_back( swap_tiles(s, zero_idx, zero_idx-4), 'U' );
+    if(r<3)   out.emplace_back( swap_tiles(s, zero_idx, zero_idx+4), 'D' );
+    if(c>0)   out.emplace_back( swap_tiles(s, zero_idx, zero_idx-1), 'L' );
+    if(c<3)   out.emplace_back( swap_tiles(s, zero_idx, zero_idx+1), 'R' );
+}
+
+/* ======= Reconstrucción del camino ======= */
+string reconstruct(uint64_t goal,
+                   const unordered_map<uint64_t,uint64_t>& parent,
+                   const unordered_map<uint64_t,char>& move_to)
+{
+    string path;
+    uint64_t cur = goal;
+    auto itp = parent.find(cur);
+    while(itp != parent.end()){
+        char m = move_to.at(cur);
+        path.push_back(m);
+        cur = itp->second;
+        itp = parent.find(cur);
+    }
+    reverse(path.begin(), path.end());
+    return path;
+}
+
+/* ======= Verificador de resolubilidad  ======= */
+bool is_solvable_4x4(const array<int,16>& grid){
+    // inversiones
+    int inv = 0;
+    for(int i=0;i<16;i++){
+        if(grid[i]==0) continue;
+        for(int j=i+1;j<16;j++){
+            if(grid[j]==0) continue;
+            if(grid[i] > grid[j]) inv++;
+        }
+    }
+
+    int zero_pos = 0;
+    for(int i=0;i<16;i++) if(grid[i]==0){ zero_pos=i; break; }
+    int row_from_bottom = 4 - (zero_pos/4);
+
+    return ( (row_from_bottom%2==0 && inv%2==1) || (row_from_bottom%2==1 && inv%2==0) );
+}
+
+/* ======= A*: óptimo con Manhattan (admisible y consistente) ======= */
+struct QNode{
+    int f, g, zero;
+    uint64_t s;
+    bool operator<(const QNode& o) const { return f > o.f; } // min-heap
+};
+
+int main(){
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    array<int,16> grid{};
+    for(int i=0;i<16;i++){
+        if(!(cin>>grid[i])) return 0;
+    }
+
+
+    cout << "El tablero ingresado es:\n";
+    int row_from_bottom = 0;
+    for(int i=0;i<16;i++){
+        cout << grid[i] << ( (i%4==3) ? '\n' : ' ' );
+        if(grid[i]==0) row_from_bottom = 4 - (i/4);
+    }
+
+    int inv = 0;
+    for(int i=0;i<16;i++){
+        if(grid[i]==0) continue;
+        for(int j=i+1;j<16;j++){
+            if(grid[j]==0) continue;
+            if(grid[i] > grid[j]) inv++;
+        }
+    }
+    cout << "El numero de inversiones es: " << inv << "\n";
+    cout << "El hueco se encuentra en la posicion: " << row_from_bottom << " (de abajo hacia arriba)\n";
+
+    bool solv = is_solvable_4x4(grid);
+    if(!solv){
+        cout << "El tablero NO es resoluble.\n";
+        return 0;
+    }
+    cout << "El tablero es resoluble. Ejecutando A* (Manhattan)...\n";
+
+    array<int,16> goal_arr{};
+    for(int i=0;i<15;i++) goal_arr[i]=i+1;
+    goal_arr[15]=0;
+    uint64_t GOAL = pack16(goal_arr);
+
+    for(int t=0;t<16;t++){
+        int val = goal_arr[t];
+        goal_r[val] = t/4;
+        goal_c[val] = t%4;
+    }
+
+    // Estado inicial
+    uint64_t start = pack16(grid);
+    if(start == GOAL){
+        cout << "Ya está en el estado meta. Camino: (vacío)\n";
+        return 0;
+    }
+
+    // A* estructuras
+    priority_queue<QNode> open;
+    unordered_map<uint64_t,int> g_cost;           
+    unordered_map<uint64_t,uint64_t> parent;      
+    unordered_map<uint64_t,char> move_to;
+
+    int z0 = 0;
+    for(int i=0;i<16;i++) if(get_tile(start,i)==0){ z0=i; break; }
+    int h0 = manhattan(start);
+    open.push({h0, 0, z0, start});
+    g_cost[start] = 0;
+
+    size_t expanded = 0;
+    const size_t MAX_EXPAND = 2000000;
+
+    vector<pair<uint64_t,char>> neigh;
+    neigh.reserve(4);
+
+    while(!open.empty()){
+        QNode cur = open.top(); open.pop();
+
+        auto itg = g_cost.find(cur.s);
+        if(itg == g_cost.end() || cur.g != itg->second) continue;
+
+        if(cur.s == GOAL){
+            string path = reconstruct(cur.s, parent, move_to);
+            cout << "Solucion encontrada.\n";
+            cout << "Longitud (movimientos): " << (int)path.size() << "\n";
+            cout << "Camino (U/D/L/R): " << path << "\n";
+            cout << "Nodos expandidos: " << expanded << "\n";
+            return 0;
+        }
+
+        if(++expanded > MAX_EXPAND){
+            cout << "Se alcanzo el limite de expansion ("<<MAX_EXPAND<<").\n";
+            cout << "Intenta con otra heuristica (p. ej., Manhattan + Linear Conflict) o aumenta el limite.\n";
+            return 0;
+        }
+
+        // Generar vecinos
+        neighbors(cur.s, cur.zero, neigh);
+        for(auto &pr : neigh){
+            uint64_t ns = pr.first;
+            char mv = pr.second;
+            int tentative_g = cur.g + 1;
+
+            auto it = g_cost.find(ns);
+            if(it == g_cost.end() || tentative_g < it->second){
+                g_cost[ns] = tentative_g;
+                parent[ns] = cur.s;
+                move_to[ns] = mv;
+                int h = manhattan(ns);
+                int nz = find_zero(ns);
+                open.push({ tentative_g + h, tentative_g, nz, ns });
+            }
+        }
+    }
+
+    cout << "No se encontro solucion (poco probable si era resoluble; revisa limites).\n";
+    return 0;
+}
